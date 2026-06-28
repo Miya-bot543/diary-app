@@ -376,7 +376,32 @@ button{cursor:pointer;}
   </nav>
 </div>
 
-<!-- DELETE SHEET -->
+<!-- ICS EXPORT SHEET -->
+<div class="overlay" id="ics-overlay" onclick="overlayBg(event,'ics-overlay')">
+  <div class="sheet">
+    <h3>匯出到日曆</h3>
+    <p style="margin-bottom:14px">選擇日期範圍，匯出 .ics 檔案後用「檔案」App 點開，即可加入 Google 日曆。</p>
+    <div class="grid2">
+      <div class="field"><label>開始日期</label><input type="date" id="ics-from"></div>
+      <div class="field"><label>結束日期</label><input type="date" id="ics-to"></div>
+    </div>
+    <div class="field">
+      <label>匯出內容</label>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-top:4px">
+        <label style="display:flex;align-items:center;gap:10px;font-size:15px;text-transform:none;letter-spacing:0;color:var(--ink)">
+          <input type="checkbox" id="ics-diary" checked style="width:18px;height:18px;accent-color:var(--purple)"> 📔 日記
+        </label>
+        <label style="display:flex;align-items:center;gap:10px;font-size:15px;text-transform:none;letter-spacing:0;color:var(--ink)">
+          <input type="checkbox" id="ics-expense" checked style="width:18px;height:18px;accent-color:var(--green)"> 💸 記帳
+        </label>
+      </div>
+    </div>
+    <div class="sheet-btns" style="margin-top:8px">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeOverlay('ics-overlay')">取消</button>
+      <button class="btn btn-terra" style="flex:1" onclick="doExportICS()">匯出 .ics</button>
+    </div>
+  </div>
+</div>
 <div class="overlay" id="del-overlay" onclick="overlayBg(event,'del-overlay')">
   <div class="sheet">
     <h3>確定要刪除？</h3>
@@ -874,8 +899,9 @@ function renderStats(){
     html+=`<div style="text-align:center;padding:50px 20px;color:var(--ink3)"><div style="font-size:42px;margin-bottom:14px">📭</div><p style="font-size:17px">這個月還沒有記錄</p></div>`;
   }
 
-  html+=`<div style="padding:20px 16px 36px">
-    <div class="sec-hd" style="margin:0 0 10px;padding:0">資料備份</div>
+  html+=`<div style="padding:20px 16px 36px;display:flex;flex-direction:column;gap:10px">
+    <div class="sec-hd" style="margin:0 0 6px;padding:0">匯出</div>
+    <button class="btn btn-terra btn-w" onclick="openICSSheet()">📅 匯出到 Google 日曆（.ics）</button>
     <button class="btn btn-ghost btn-w" onclick="exportData()">📤 匯出 JSON 備份</button>
   </div>`;
 
@@ -888,6 +914,104 @@ function exportData(){
   a.href=URL.createObjectURL(blob);
   a.download=`diary-backup-${toDS(new Date())}.json`;
   a.click();
+}
+
+function openICSSheet(){
+  const n=new Date();
+  const from=new Date(n.getFullYear(),n.getMonth(),1);
+  document.getElementById('ics-from').value=toDS(from);
+  document.getElementById('ics-to').value=toDS(n);
+  document.getElementById('ics-overlay').classList.add('open');
+}
+
+function doExportICS(){
+  const from=document.getElementById('ics-from').value;
+  const to=document.getElementById('ics-to').value;
+  const inclDiary=document.getElementById('ics-diary').checked;
+  const inclExpense=document.getElementById('ics-expense').checked;
+  if(!from||!to){toast('請選擇日期範圍');return;}
+  if(!inclDiary&&!inclExpense){toast('請至少勾選一項');return;}
+
+  const events=[];
+
+  if(inclDiary){
+    db.diaries.filter(x=>x.date>=from&&x.date<=to).forEach(x=>{
+      events.push({
+        uid: x.id+'@diary-app',
+        title: x.content,  // full content as title
+        date: x.date,
+        time: x.time||'',
+        description: '',
+        location: ''
+      });
+    });
+  }
+
+  if(inclExpense){
+    db.expenses.filter(x=>x.date>=from&&x.date<=to).forEach(x=>{
+      const cur=x.currency||'TWD';
+      const tot=lineTotal(x);
+      let desc='';
+      if(x.items&&x.items.length){
+        desc+=x.items.map(it=>`・${it.name}　${curSym(cur)}${fmtAmt(it.amount,cur)}`).join('\n');
+        desc+=`\n・總計　${curSym(cur)}${fmtAmt(tot,cur)}`;
+      }
+      if(x.payment) desc+=`\n付款：${x.payment}`;
+      events.push({
+        uid: x.id+'@diary-app',
+        title: x.title||x.category,
+        date: x.date,
+        time: x.time||'',
+        description: desc,
+        location: x.location||''
+      });
+    });
+  }
+
+  if(!events.length){toast('所選範圍內沒有記錄');return;}
+
+  const lines=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//diary-app//TW','CALSCALE:GREGORIAN','METHOD:PUBLISH'];
+
+  events.forEach(ev=>{
+    const dtStart=icsDatetime(ev.date,ev.time);
+    const dtEnd=icsDatetime(ev.date,ev.time,30); // 30min duration
+    lines.push('BEGIN:VEVENT');
+    lines.push(`UID:${ev.uid}`);
+    lines.push(`DTSTAMP:${icsNow()}`);
+    lines.push(`DTSTART:${dtStart}`);
+    lines.push(`DTEND:${dtEnd}`);
+    lines.push(`SUMMARY:${icsEsc(ev.title)}`);
+    if(ev.description) lines.push(`DESCRIPTION:${icsEsc(ev.description)}`);
+    if(ev.location) lines.push(`LOCATION:${icsEsc(ev.location)}`);
+    lines.push('END:VEVENT');
+  });
+
+  lines.push('END:VCALENDAR');
+  const content=lines.join('\r\n');
+  const blob=new Blob([content],{type:'text/calendar;charset=utf-8'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`diary-${from}-${to}.ics`;
+  a.click();
+  closeOverlay('ics-overlay');
+  toast(`已匯出 ${events.length} 筆事件 ✓`);
+}
+
+function icsDatetime(date,time,addMin=0){
+  const [y,mo,d]=date.split('-');
+  let h=0,m=0;
+  if(time){[h,m]=time.split(':').map(Number);}
+  m+=addMin;
+  if(m>=60){h+=Math.floor(m/60);m=m%60;}
+  if(!time) return `${y}${mo}${d}`;  // all-day if no time
+  return `${y}${mo}${d}T${p2(h)}${p2(m)}00`;
+}
+function icsNow(){
+  const n=new Date();
+  return `${n.getFullYear()}${p2(n.getMonth()+1)}${p2(n.getDate())}T${p2(n.getHours())}${p2(n.getMinutes())}${p2(n.getSeconds())}Z`;
+}
+function icsEsc(s){
+  return String(s||'').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\n/g,'\\n');
 }
 
 // ═══ BOOT ═══
