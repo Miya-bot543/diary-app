@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F0E9DC">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>日記記帳</title>
+<link rel="manifest" href="manifest.json">
+<style>
+:root {
+  --paper:   #FAF6F0;
+  --paper2:  #F0E9DC;
+  --paper3:  #E8DDD0;
+  --ink:     #2A1F14;
+  --ink2:    #4A3828;
+  --ink3:    #7A6A55;
+  --ink4:    #A89880;
+  --border:  #DDD0BC;
+  --border2: #C8B89E;
+  --terra:   #C4763A;
+  --terra-d: #A05E28;
+  --terra-l: #F0E0CC;
+  --purple:  #8856C0;
+  --purple-l:#EEE4F8;
+  --purple-d:#6638A0;
+  --green:   #2A6B3A;
+  --green-l: #E0F0E4;
+  --green-d: #1A4A28;
+  --rose:    #C04060;
+  --rose-l:  #F8E4E8;
+  --r: 12px;
+  --nav-h: 68px;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --serif: Georgia, 'Times New Roman', serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+html,body{height:100%;background:var(--paper);color:var(--ink);font-family:-apple-system,'PingFang TC','Noto Sans TC',system-ui,sans-serif;font-size:16px;overflow:hidden;}
+input,textarea,select,button{font-family:inherit;font-size:inherit;color:inherit;}
+button{cursor:pointer;}
+
+/* ── LAYOUT ── */
+#app{height:100%;display:flex;flex-direction:column;}
+#screens{flex:1;overflow:hidden;position:relative;}
+/* FIX: screens use position absolute so calendar never gets clipped */
+.screen{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;transform:translateX(100%);transition:transform 0.3s cubic-bezier(0.4,0,0.2,1);will-change:transform;background:var(--paper);}
+.screen.active{transform:translateX(0);}
+.screen.back{transform:translateX(-22%);}
+
+/* ── NAV ── */
+#nav{height:calc(var(--nav-h) + var(--safe-b));background:var(--paper2);border-top:1.5px solid var(--border);display:flex;align-items:flex-start;padding-top:10px;flex-shrink:0;z-index:20;}
+.nb{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;background:none;border:none;padding:4px 0;opacity:.45;transition:opacity .15s;}
+.nb.active{opacity:1;}
+.nb svg{width:26px;height:26px;stroke:var(--ink2);stroke-width:1.6;fill:none;}
+.nb span{font-size:11px;color:var(--ink2);font-weight:500;letter-spacing:.02em;}
+.nb.active svg{stroke:var(--terra);}
+.nb.active span{color:var(--terra);}
+
+/* ── TOP BAR ── */
+.tbar{padding:16px 18px 12px;background:var(--paper2);border-bottom:1.5px solid var(--border);position:sticky;top:0;z-index:10;}
+.tbar h1{font-family:var(--serif);font-size:22px;font-weight:700;color:var(--ink);letter-spacing:-.01em;}
+.tbar-row{display:flex;align-items:center;justify-content:space-between;}
+.back-btn{display:flex;align-items:center;gap:5px;background:none;border:none;color:var(--ink3);font-size:15px;padding:0;}
+.back-btn svg{width:18px;height:18px;stroke:var(--ink3);stroke-width:2;fill:none;}
+
+/* ── INPUTS ── */
+.field{margin-bottom:16px;}
+.field label{display:block;font-size:12px;font-weight:600;color:var(--ink3);letter-spacing:.07em;text-transform:uppercase;margin-bottom:7px;}
+.field input,.field textarea,.field select{width:100%;background:var(--paper);border:1.5px solid var(--border);border-radius:10px;padding:12px 14px;color:var(--ink);outline:none;transition:border-color .15s;font-size:16px;-webkit-appearance:none;appearance:none;line-height:1.5;}
+.field input:focus,.field textarea:focus,.field select:focus{border-color:var(--terra);}
+.field textarea{resize:none;}
+.field select option{background:var(--paper);}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+
+/* ── BUTTONS ── */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:none;border-radius:10px;padding:14px 18px;font-size:16px;font-weight:600;transition:opacity .15s,transform .1s;}
+.btn:active{transform:scale(.96);opacity:.85;}
+.btn-terra{background:var(--terra);color:#fff;}
+.btn-green{background:var(--green);color:#fff;}
+.btn-ghost{background:var(--paper2);border:1.5px solid var(--border);color:var(--ink2);font-weight:500;}
+.btn-danger{background:var(--rose-l);color:var(--rose);border:1.5px solid #E0B0BC;}
+.btn-purple{background:var(--purple);color:#fff;}
+.btn-w{width:100%;}
+.btn-sm{padding:9px 14px;font-size:14px;}
+
+/* ── TABS ── */
+.ttabs{display:flex;background:var(--paper3);border-radius:12px;padding:4px;gap:4px;}
+.ttab{flex:1;padding:11px;border:none;border-radius:9px;font-size:15px;font-weight:500;background:none;color:var(--ink3);transition:all .18s;}
+.ttab.on{background:var(--paper);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.08);}
+
+/* ── CARDS / PILLS ── */
+.card{background:var(--paper);border:1.5px solid var(--border);border-radius:var(--r);overflow:hidden;}
+.pill{display:inline-flex;align-items:center;font-size:13px;padding:4px 12px;border-radius:20px;font-weight:500;}
+.pill-purple{background:var(--purple-l);color:var(--purple-d);}
+.pill-green{background:var(--green-l);color:var(--green-d);}
+
+/* ═══════════ CALENDAR ═══════════ */
+.cal-header{background:var(--paper2);text-align:center;padding:12px 18px 10px;border-bottom:1.5px solid var(--border);}
+.cal-year{font-size:14px;color:var(--ink3);font-style:italic;font-family:var(--serif);letter-spacing:.04em;}
+.cal-month{font-size:32px;font-weight:700;color:var(--ink);font-family:var(--serif);letter-spacing:-.01em;line-height:1.1;}
+.cal-nav-row{display:flex;align-items:center;justify-content:space-between;padding:8px 14px 0;background:var(--paper2);}
+.cal-arr{background:none;border:none;font-size:30px;color:var(--ink3);padding:0 10px;line-height:1;font-family:var(--serif);transition:color .12s;}
+.cal-arr:active{color:var(--terra);}
+.cal-hint{font-size:12px;color:var(--ink4);font-style:italic;}
+.wdays{display:grid;grid-template-columns:repeat(7,1fr);padding:10px 12px 4px;background:var(--paper);}
+.wday{text-align:center;font-size:14px;color:var(--ink3);font-weight:600;padding:2px 0;}
+.cgrid{display:grid;grid-template-columns:repeat(7,1fr);padding:2px 10px 10px;gap:3px;}
+.ccell{display:flex;flex-direction:column;align-items:center;padding:7px 2px 5px;border-radius:10px;cursor:pointer;gap:4px;transition:background .1s;min-height:54px;}
+.ccell:active{background:var(--paper3);}
+.ccell .dn{font-size:22px;color:var(--ink);font-weight:400;line-height:1;}
+.ccell.today{background:var(--terra);}
+.ccell.today .dn{color:#fff;font-weight:700;}
+.ccell.sel{background:var(--terra-l);border:1.5px solid var(--terra);}
+.ccell.sel .dn{color:var(--terra-d);font-weight:600;}
+.cdots{display:flex;gap:3px;}
+.cdot{width:6px;height:6px;border-radius:50%;}
+.cd-d{background:var(--purple);}
+.cd-e{background:var(--green);}
+
+/* day panel */
+.dpanel{margin:12px 14px 24px;}
+.dpanel-hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;padding:0 2px;}
+.dpanel-date{font-family:var(--serif);font-size:16px;font-weight:600;color:var(--ink);}
+.dpanel-total{font-size:15px;font-weight:700;color:var(--green);}
+.erow{display:flex;align-items:center;gap:12px;padding:13px 14px;border-bottom:1.5px solid var(--border);cursor:pointer;transition:background .1s;}
+.erow:last-child{border-bottom:none;}
+.erow:active{background:var(--paper2);}
+.eicon{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;}
+.ei-d{background:var(--purple-l);}
+.ei-e{background:var(--green-l);}
+.ebody{flex:1;min-width:0;}
+.ebody-title{font-size:16px;color:var(--ink);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.ebody-sub{font-size:13px;color:var(--ink3);margin-top:3px;}
+.eamt{font-size:16px;font-weight:700;color:var(--green);flex-shrink:0;}
+.empty-day{text-align:center;padding:36px 20px;}
+.empty-day .em-icon{font-size:40px;margin-bottom:10px;}
+.empty-day p{font-size:16px;color:var(--ink3);line-height:1.7;}
+.legend-row{display:flex;gap:18px;justify-content:center;padding:8px 0 4px;border-top:1px solid var(--border);margin-top:4px;}
+.leg-item{display:flex;align-items:center;gap:5px;font-size:13px;color:var(--ink3);}
+
+/* ═══════════ ADD ═══════════ */
+.fbody{padding:16px 18px 40px;}
+.line-items{display:flex;flex-direction:column;gap:8px;margin-bottom:10px;}
+.line-item{display:flex;gap:8px;align-items:center;background:var(--paper2);border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;}
+.line-item-name{flex:1;font-size:15px;color:var(--ink);}
+.line-item-amt{font-size:15px;font-weight:600;color:var(--green);white-space:nowrap;}
+.line-item-del{background:none;border:none;font-size:22px;color:var(--ink4);padding:0 2px;line-height:1;flex-shrink:0;}
+.line-item-del:active{color:var(--rose);}
+.line-total{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--paper3);border-radius:10px;border:1.5px solid var(--border2);}
+.line-total span{font-size:14px;color:var(--ink3);font-weight:600;letter-spacing:.04em;text-transform:uppercase;}
+.line-total strong{font-size:20px;font-weight:700;color:var(--green);}
+.add-line-row{display:flex;gap:8px;}
+
+/* ═══════════ DETAIL ═══════════ */
+.dh-wrap{padding:18px 18px 14px;border-bottom:1.5px solid var(--border);}
+.dh-amount{font-size:44px;font-weight:800;letter-spacing:-.03em;color:var(--green);font-family:var(--serif);line-height:1;}
+.dh-cur{font-size:18px;color:var(--ink3);margin-right:4px;}
+.dh-title{font-size:20px;font-weight:600;color:var(--ink);margin-top:6px;}
+.dmeta{padding:0 18px;}
+.dmeta-row{display:flex;align-items:flex-start;gap:12px;padding:13px 0;border-bottom:1.5px solid var(--border);}
+.dmeta-row:last-child{border-bottom:none;}
+.dmeta-icon{width:36px;height:36px;border-radius:9px;background:var(--paper2);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;margin-top:1px;}
+.dmeta-label{font-size:12px;color:var(--ink3);font-weight:600;letter-spacing:.05em;text-transform:uppercase;}
+.dmeta-val{font-size:16px;color:var(--ink);margin-top:3px;font-weight:500;}
+.dline-item{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);}
+.dline-item:last-child{border-bottom:none;}
+.dline-name{font-size:15px;color:var(--ink);}
+.dline-amt{font-size:15px;font-weight:600;color:var(--green);}
+
+/* ═══════════ STATS ═══════════ */
+.stat-hero{margin:14px 16px 0;padding:20px;background:var(--paper2);border:1.5px solid var(--border);border-radius:16px;}
+.stat-hero-label{font-size:12px;color:var(--ink3);font-weight:600;letter-spacing:.07em;text-transform:uppercase;margin-bottom:6px;}
+.cur-hero-row{display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;border-bottom:1px solid var(--border);}
+.cur-hero-row:last-child{border-bottom:none;}
+.cur-hero-name{font-size:15px;color:var(--ink3);font-weight:600;}
+.cur-hero-amt{font-size:22px;font-weight:800;color:var(--green);font-family:var(--serif);letter-spacing:-.02em;}
+.stat-hero-pills{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
+.sec-hd{font-size:12px;font-weight:700;color:var(--ink3);letter-spacing:.08em;text-transform:uppercase;padding:0 16px;margin:18px 0 8px;}
+
+/* pie chart — compact card: small donut left, legend right */
+.pie-card{display:flex;gap:14px;align-items:center;padding:14px 16px;background:var(--paper);border:1.5px solid var(--border);border-radius:14px;margin:0 16px;}
+.pie-svg{flex-shrink:0;}
+.pie-legend{flex:1;display:flex;flex-direction:column;gap:7px;min-width:0;}
+.pie-leg-item{display:flex;align-items:center;gap:7px;}
+.pie-leg-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+.pie-leg-label{font-size:13px;color:var(--ink);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.pie-leg-pct{font-size:13px;font-weight:700;color:var(--ink3);flex-shrink:0;}
+
+/* payment by currency — 2-col chip grid per currency */
+.pay-cur-section{margin:0 16px 14px;}
+.pay-cur-label{font-size:12px;font-weight:700;color:var(--ink3);letter-spacing:.06em;text-transform:uppercase;margin-bottom:7px;display:flex;justify-content:space-between;align-items:baseline;}
+.pay-cur-label-total{font-size:14px;font-weight:700;color:var(--green);text-transform:none;letter-spacing:0;}
+.pay-chip-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.pay-chip{background:var(--paper2);border:1.5px solid var(--border);border-radius:11px;padding:11px 13px;}
+.pay-chip-name{font-size:13px;color:var(--ink3);margin-bottom:4px;}
+.pay-chip-amt{font-size:16px;font-weight:700;color:var(--ink);font-family:var(--serif);}
+
+/* ── OVERLAY / SHEET ── */
+.overlay{position:fixed;inset:0;background:rgba(42,31,20,.55);z-index:100;display:flex;align-items:flex-end;opacity:0;pointer-events:none;transition:opacity .22s;}
+.overlay.open{opacity:1;pointer-events:auto;}
+.sheet{background:var(--paper);border-radius:20px 20px 0 0;padding:22px 18px calc(22px + var(--safe-b));width:100%;transform:translateY(30px);transition:transform .22s cubic-bezier(0.4,0,0.2,1);border-top:1.5px solid var(--border);max-height:90vh;overflow-y:auto;}
+.overlay.open .sheet{transform:translateY(0);}
+.sheet h3{font-family:var(--serif);font-size:20px;font-weight:700;margin-bottom:8px;color:var(--ink);}
+.sheet p{font-size:15px;color:var(--ink3);line-height:1.6;margin-bottom:20px;}
+.sheet-btns{display:flex;gap:10px;}
+.sheet-fields{display:flex;flex-direction:column;gap:2px;margin-bottom:16px;}
+
+/* ── TOAST ── */
+#toast{position:fixed;bottom:calc(var(--nav-h) + var(--safe-b) + 16px);left:50%;transform:translateX(-50%) translateY(8px);background:var(--ink);color:var(--paper);padding:11px 22px;border-radius:22px;font-size:15px;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;white-space:nowrap;z-index:200;font-weight:500;}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+.mt12{margin-top:12px;}.mt16{margin-top:16px;}.mt20{margin-top:20px;}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="screens">
+
+    <!-- ════════ CALENDAR ════════ -->
+    <div class="screen active" id="scal">
+      <div class="cal-header">
+        <div class="cal-year" id="cal-year"></div>
+        <div class="cal-month" id="cal-month"></div>
+      </div>
+      <div class="cal-nav-row">
+        <button class="cal-arr" onclick="calShift(-1)">‹</button>
+        <span class="cal-hint">點選日期查看記錄</span>
+        <button class="cal-arr" onclick="calShift(1)">›</button>
+      </div>
+      <div class="wdays" id="wdays"></div>
+      <div class="cgrid" id="cgrid"></div>
+      <div class="dpanel" id="dpanel"></div>
+    </div>
+
+    <!-- ════════ ADD ════════ -->
+    <div class="screen" id="sadd">
+      <div class="tbar"><h1>新增記錄</h1></div>
+      <div class="fbody">
+        <div class="ttabs">
+          <button class="ttab"    id="ttab-d" onclick="switchTab('diary')">📔 日記</button>
+          <button class="ttab on" id="ttab-e" onclick="switchTab('expense')">💸 記帳</button>
+        </div>
+
+        <!-- DIARY -->
+        <div id="fdiary" class="mt16" style="display:none">
+          <div class="grid2">
+            <div class="field"><label>日期</label><input type="date" id="d-date"></div>
+            <div class="field"><label>時間</label><input type="time" id="d-time"></div>
+          </div>
+          <div class="field">
+            <label>內容</label>
+            <textarea id="d-content" rows="8" placeholder="今天發生了什麼..."></textarea>
+          </div>
+          <button class="btn btn-purple btn-w mt20" onclick="saveDiary()">儲存日記</button>
+        </div>
+
+        <!-- EXPENSE -->
+        <div id="fexpense" class="mt16">
+          <div class="field">
+            <label>標題</label>
+            <input type="text" id="e-title" placeholder="例：午餐、日用品採購、交通費...">
+          </div>
+          <div class="grid2">
+            <div class="field"><label>日期</label><input type="date" id="e-date"></div>
+            <div class="field"><label>時間</label><input type="time" id="e-time"></div>
+          </div>
+          <div class="field">
+            <label>地點</label>
+            <input type="text" id="e-loc" placeholder="信義區、澀谷...">
+          </div>
+          <div class="grid2">
+            <div class="field"><label>分類</label>
+              <select id="e-cat">
+                <option value="餐飲">🍽 餐飲</option>
+                <option value="咖啡">☕ 咖啡</option>
+                <option value="交通">🚌 交通</option>
+                <option value="購物">🛍 購物</option>
+                <option value="娛樂">🎬 娛樂</option>
+                <option value="醫療">🏥 醫療</option>
+                <option value="住宿">🏠 住宿</option>
+                <option value="教育">📚 教育</option>
+                <option value="其他">📦 其他</option>
+              </select>
+            </div>
+            <div class="field"><label>幣種</label>
+              <select id="e-currency">
+                <option value="TWD">🇹🇼 TWD</option>
+                <option value="USD">🇺🇸 USD</option>
+                <option value="JPY">🇯🇵 JPY</option>
+                <option value="EUR">🇪🇺 EUR</option>
+                <option value="KRW">🇰🇷 KRW</option>
+                <option value="HKD">🇭🇰 HKD</option>
+                <option value="CNY">🇨🇳 CNY</option>
+                <option value="GBP">🇬🇧 GBP</option>
+                <option value="AUD">🇦🇺 AUD</option>
+                <option value="SGD">🇸🇬 SGD</option>
+                <option value="THB">🇹🇭 THB</option>
+              </select>
+            </div>
+          </div>
+          <div class="field"><label>付款方式</label>
+            <select id="e-pay">
+              <option value="現金">💵 現金</option>
+              <option value="信用卡">💳 信用卡</option>
+              <option value="悠遊卡">🎴 悠遊卡</option>
+              <option value="行動支付">📱 行動支付</option>
+              <option value="敬老卡扣點">👴 敬老卡扣點</option>
+              <option value="敬老卡儲值金">👴 敬老卡儲值金</option>
+              <option value="會員卡儲值金">🪙 會員卡儲值金</option>
+              <option value="轉帳">🏦 轉帳</option>
+              <option value="其他">📦 其他</option>
+            </select>
+          </div>
+          <!-- line items -->
+          <div class="field">
+            <label>逐筆項目</label>
+            <div class="line-items" id="line-items-list"></div>
+            <div class="add-line-row">
+              <input type="text" id="li-name" placeholder="項目名稱" style="flex:1;background:var(--paper);border:1.5px solid var(--border);border-radius:10px;padding:11px 12px;outline:none;">
+              <input type="number" id="li-amt" placeholder="金額" inputmode="decimal" style="width:90px;background:var(--paper);border:1.5px solid var(--border);border-radius:10px;padding:11px 10px;outline:none;">
+              <button class="btn btn-ghost btn-sm" onclick="addLineItem()" style="padding:11px 14px;flex-shrink:0;">＋</button>
+            </div>
+          </div>
+          <div class="line-total" id="line-total" style="display:none">
+            <span>總計</span>
+            <strong id="line-total-amt">NT$0</strong>
+          </div>
+          <button class="btn btn-green btn-w mt16" onclick="saveExpense()">儲存記帳</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════ DETAIL ════════ -->
+    <div class="screen" id="sdetail">
+      <div class="tbar">
+        <div class="tbar-row">
+          <button class="back-btn" onclick="goBack()">
+            <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            返回
+          </button>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-ghost btn-sm" onclick="openEditSheet()">修改</button>
+            <button class="btn btn-danger btn-sm" onclick="openDeleteSheet()">刪除</button>
+          </div>
+        </div>
+      </div>
+      <div id="detail-body"></div>
+    </div>
+
+    <!-- ════════ STATS ════════ -->
+    <div class="screen" id="sstats">
+      <div class="tbar"><h1>統計</h1></div>
+      <div style="display:flex;align-items:center;padding:10px 12px 4px;background:var(--paper2);border-bottom:1.5px solid var(--border)">
+        <button class="cal-arr" style="font-size:28px" onclick="statsShift(-1)">‹</button>
+        <span id="stats-label" style="flex:1;text-align:center;font-size:17px;font-weight:700;font-family:var(--serif);color:var(--ink)"></span>
+        <button class="cal-arr" style="font-size:28px" onclick="statsShift(1)">›</button>
+      </div>
+      <div id="stats-body"></div>
+    </div>
+  </div>
+
+  <nav id="nav">
+    <button class="nb active" id="nb-cal" onclick="showScr('cal')">
+      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>
+      <span>日曆</span>
+    </button>
+    <button class="nb" id="nb-add" onclick="showScr('add')">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
+      <span>記錄</span>
+    </button>
+    <button class="nb" id="nb-stats" onclick="showScr('stats')">
+      <svg viewBox="0 0 24 24"><path d="M3 20h18M7 20V10M12 20V4M17 20v-6"/></svg>
+      <span>統計</span>
+    </button>
+  </nav>
+</div>
+
+<!-- DELETE SHEET -->
+<div class="overlay" id="del-overlay" onclick="overlayBg(event,'del-overlay')">
+  <div class="sheet">
+    <h3>確定要刪除？</h3>
+    <p>這筆記錄將永久刪除，無法復原。</p>
+    <div class="sheet-btns">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeOverlay('del-overlay')">取消</button>
+      <button class="btn btn-danger" style="flex:1" onclick="doDelete()">確認刪除</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT SHEET -->
+<div class="overlay" id="edit-overlay" onclick="overlayBg(event,'edit-overlay')">
+  <div class="sheet" id="edit-sheet-body"></div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ═══ DATA ═══
+const DB_KEY='diary-v3';
+function load(){try{return JSON.parse(localStorage.getItem(DB_KEY))||{diaries:[],expenses:[]};}catch{return{diaries:[],expenses:[]};}}
+function persist(){localStorage.setItem(DB_KEY,JSON.stringify(db));}
+let db=load();
+
+// ═══ ROUTING ═══
+let curScr='cal',prevScr='cal';
+const SCRS={cal:'scal',add:'sadd',detail:'sdetail',stats:'sstats'};
+
+function showScr(name){
+  const cur=document.getElementById(SCRS[curScr]);
+  const nxt=document.getElementById(SCRS[name]);
+  if(!nxt||name===curScr)return;
+  cur.classList.remove('active');
+  if(name==='detail')cur.classList.add('back');
+  else cur.classList.remove('back');
+  nxt.classList.add('active');
+  prevScr=curScr; curScr=name;
+  ['cal','add','stats'].forEach(t=>document.getElementById('nb-'+t)?.classList.toggle('active',t===name));
+  if(name==='stats')renderStats();
+}
+
+// FIX: goBack restores scroll position & removes .back cleanly
+function goBack(){
+  const curEl=document.getElementById(SCRS[curScr]);
+  const prevEl=document.getElementById(SCRS[prevScr]);
+  curEl.classList.remove('active','back');
+  prevEl.classList.remove('back');
+  prevEl.classList.add('active');
+  // restore calendar scroll to top so grid is fully visible
+  if(prevScr==='cal') prevEl.scrollTop=0;
+  curScr=prevScr;
+  ['cal','add','stats'].forEach(t=>document.getElementById('nb-'+t)?.classList.toggle('active',t===curScr));
+}
+
+// ═══ UTILS ═══
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function p2(n){return String(n).padStart(2,'0');}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
+function toDS(d){return `${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`;}
+function fmtAmt(a,cur){
+  const n=Number(a);
+  if(cur==='JPY'||cur==='KRW')return n.toLocaleString();
+  return n.toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:2});
+}
+function curSym(cur){return{TWD:'NT$',USD:'$',JPY:'¥',EUR:'€',GBP:'£',KRW:'₩',HKD:'HK$',CNY:'¥',AUD:'A$',SGD:'S$',THB:'฿'}[cur]||cur+' ';}
+const MONTHS=['一月','二月','三月','四月','五月','六月','七月','八月','九月','十月','十一月','十二月'];
+const WEEKDAYS=['日','一','二','三','四','五','六'];
+const CAT_EMOJI={餐飲:'🍽',咖啡:'☕',交通:'🚌',購物:'🛍',娛樂:'🎬',醫療:'🏥',住宿:'🏠',教育:'📚',其他:'📦'};
+// Warm earthy pie colors matching the Cream Ink theme
+const CAT_COLOR={餐飲:'#8B4513',咖啡:'#6B3A2A',交通:'#6B5B8B',購物:'#B87333',娛樂:'#9B3060',醫療:'#2A5080',住宿:'#4A7050',教育:'#404880',其他:'#7A6A55'};
+
+function fmtDatetime(date,time){
+  if(!date)return'';
+  const [y,mo,d]=date.split('-');
+  const dow=WEEKDAYS[new Date(date).getDay()];
+  const base=`${parseInt(y)}年${parseInt(mo)}月${parseInt(d)}日（${dow}）`;
+  return time?base+' '+time:base;
+}
+
+function toast(msg){
+  const el=document.getElementById('toast');
+  el.textContent=msg;el.classList.add('show');
+  setTimeout(()=>el.classList.remove('show'),2200);
+}
+function overlayBg(e,id){if(e.target===document.getElementById(id))closeOverlay(id);}
+function closeOverlay(id){document.getElementById(id).classList.remove('open');}
+
+// ═══ CALENDAR ═══
+let calY,calM,selDate;
+function calInit(){
+  const n=new Date();calY=n.getFullYear();calM=n.getMonth();selDate=toDS(n);
+  renderCal();renderDay(selDate);
+}
+function calShift(d){
+  calM+=d;
+  if(calM>11){calM=0;calY++;}if(calM<0){calM=11;calY--;}
+  // FIX: reset scroll so calendar grid is always fully visible after month change
+  document.getElementById('scal').scrollTop=0;
+  renderCal();renderDay(selDate);
+}
+function renderCal(){
+  document.getElementById('cal-year').textContent=calY+' 年';
+  document.getElementById('cal-month').textContent=MONTHS[calM];
+  document.getElementById('wdays').innerHTML=WEEKDAYS.map(d=>`<div class="wday">${d}</div>`).join('');
+  const cg=document.getElementById('cgrid');cg.innerHTML='';
+  const fd=new Date(calY,calM,1).getDay();
+  const dim=new Date(calY,calM+1,0).getDate();
+  const today=toDS(new Date());
+  const idx=entryIdx();
+  for(let i=0;i<fd;i++)cg.insertAdjacentHTML('beforeend','<div></div>');
+  for(let d=1;d<=dim;d++){
+    const ds=`${calY}-${p2(calM+1)}-${p2(d)}`;
+    const e=idx[ds]||{};
+    const isT=ds===today,isSel=ds===selDate&&!isT;
+    const dots=(e.d?'<div class="cdot cd-d"></div>':'')+(e.e?'<div class="cdot cd-e"></div>':'');
+    cg.insertAdjacentHTML('beforeend',
+      `<div class="ccell${isT?' today':''}${isSel?' sel':''}" onclick="selDay('${ds}')">
+        <span class="dn">${d}</span>
+        ${(e.d||e.e)?`<div class="cdots">${dots}</div>`:''}
+      </div>`);
+  }
+}
+function entryIdx(){
+  const m={};
+  db.diaries.forEach(x=>{if(!m[x.date])m[x.date]={};m[x.date].d=true;});
+  db.expenses.forEach(x=>{if(!m[x.date])m[x.date]={};m[x.date].e=true;});
+  return m;
+}
+function selDay(ds){selDate=ds;renderCal();renderDay(ds);}
+
+function renderDay(ds){
+  const panel=document.getElementById('dpanel');
+  if(!ds){panel.innerHTML='';return;}
+  const [y,mo,d]=ds.split('-');
+  const dow=WEEKDAYS[new Date(ds).getDay()];
+  const dias=db.diaries.filter(x=>x.date===ds);
+  const exps=db.expenses.filter(x=>x.date===ds);
+  const twdTotal=exps.filter(x=>!x.currency||x.currency==='TWD').reduce((s,x)=>s+lineTotal(x),0);
+
+  let html=`<div class="dpanel-hd">
+    <span class="dpanel-date">${parseInt(y)}年${parseInt(mo)}月${parseInt(d)}日（${dow}）</span>
+    ${twdTotal>0?`<span class="dpanel-total">NT$${twdTotal.toLocaleString()}</span>`:''}
+  </div><div class="card">`;
+
+  if(!dias.length&&!exps.length){
+    html+=`<div class="empty-day"><div class="em-icon">🌿</div><p>這天還沒有記錄<br>點下方「記錄」新增</p></div>`;
+  }
+  dias.forEach(x=>{
+    const preview=x.content.length>15?x.content.slice(0,15)+'…':x.content;
+    html+=`<div class="erow" onclick="openDetail('diary','${x.id}')">
+      <div class="eicon ei-d">📔</div>
+      <div class="ebody">
+        <div class="ebody-title">${esc(preview)}</div>
+        <div class="ebody-sub">${x.time||'日記'}</div>
+      </div>
+    </div>`;
+  });
+  exps.forEach(x=>{
+    const cur=x.currency||'TWD';
+    const tot=lineTotal(x);
+    // show title if set, else category
+    const displayTitle=x.title||(x.items&&x.items.length?x.items[0].name:x.category);
+    html+=`<div class="erow" onclick="openDetail('expense','${x.id}')">
+      <div class="eicon ei-e">${CAT_EMOJI[x.category]||'📦'}</div>
+      <div class="ebody">
+        <div class="ebody-title">${esc(displayTitle)}</div>
+        <div class="ebody-sub">${x.time||''} ${x.location?'· '+esc(x.location):''}</div>
+      </div>
+      <span class="eamt">${curSym(cur)}${fmtAmt(tot,cur)}</span>
+    </div>`;
+  });
+  html+=`</div>
+  <div class="legend-row">
+    <div class="leg-item"><div class="cdot cd-d"></div> 日記</div>
+    <div class="leg-item"><div class="cdot cd-e"></div> 記帳</div>
+  </div>`;
+  panel.innerHTML=html;
+}
+
+function lineTotal(x){
+  if(x.items&&x.items.length)return x.items.reduce((s,i)=>s+Number(i.amount),0);
+  return Number(x.amount||0);
+}
+
+// ═══ LINE ITEMS ═══
+let lineItems=[];
+function renderLineItems(){
+  const list=document.getElementById('line-items-list');
+  const totEl=document.getElementById('line-total');
+  const totAmt=document.getElementById('line-total-amt');
+  const cur=document.getElementById('e-currency').value;
+  if(!lineItems.length){list.innerHTML='';totEl.style.display='none';return;}
+  list.innerHTML=lineItems.map((it,i)=>
+    `<div class="line-item">
+      <span class="line-item-name">${esc(it.name)}</span>
+      <span class="line-item-amt">${curSym(cur)}${fmtAmt(it.amount,cur)}</span>
+      <button class="line-item-del" onclick="removeLineItem(${i})">×</button>
+    </div>`).join('');
+  const tot=lineItems.reduce((s,i)=>s+Number(i.amount),0);
+  totAmt.textContent=curSym(cur)+fmtAmt(tot,cur);
+  totEl.style.display='flex';
+}
+function addLineItem(){
+  const nm=document.getElementById('li-name').value.trim();
+  const am=document.getElementById('li-amt').value;
+  if(!nm||!am){toast('請填寫項目名稱和金額');return;}
+  lineItems.push({name:nm,amount:parseFloat(am)});
+  document.getElementById('li-name').value='';
+  document.getElementById('li-amt').value='';
+  renderLineItems();
+}
+function removeLineItem(i){lineItems.splice(i,1);renderLineItems();}
+
+// ═══ ADD FORMS ═══
+let activeTab='expense';
+function switchTab(t){
+  activeTab=t;
+  document.getElementById('fdiary').style.display=t==='diary'?'block':'none';
+  document.getElementById('fexpense').style.display=t==='expense'?'block':'none';
+  document.getElementById('ttab-d').classList.toggle('on',t==='diary');
+  document.getElementById('ttab-e').classList.toggle('on',t==='expense');
+}
+function initDefaults(){
+  const n=new Date(),ds=toDS(n),ts=`${p2(n.getHours())}:${p2(n.getMinutes())}`;
+  document.getElementById('d-date').value=ds;
+  document.getElementById('d-time').value=ts;
+  document.getElementById('e-date').value=ds;
+  document.getElementById('e-time').value=ts;
+}
+function saveDiary(){
+  const date=document.getElementById('d-date').value;
+  const time=document.getElementById('d-time').value;
+  const content=document.getElementById('d-content').value.trim();
+  if(!date||!content){toast('請填寫日期和內容');return;}
+  db.diaries.push({id:uid(),date,time,content});
+  persist();
+  document.getElementById('d-content').value='';
+  toast('日記已儲存 ✓');
+  renderCal();renderDay(selDate);
+}
+function saveExpense(){
+  if(!lineItems.length){toast('請新增至少一筆項目');return;}
+  const date=document.getElementById('e-date').value;
+  if(!date){toast('請填寫日期');return;}
+  db.expenses.push({
+    id:uid(),
+    title:document.getElementById('e-title').value.trim(),
+    date,
+    time:document.getElementById('e-time').value,
+    location:document.getElementById('e-loc').value.trim(),
+    category:document.getElementById('e-cat').value,
+    currency:document.getElementById('e-currency').value,
+    payment:document.getElementById('e-pay').value,
+    items:[...lineItems]
+  });
+  persist();
+  lineItems=[];renderLineItems();
+  document.getElementById('e-title').value='';
+  document.getElementById('e-loc').value='';
+  document.getElementById('li-name').value='';
+  document.getElementById('li-amt').value='';
+  toast('記帳已儲存 ✓');
+  renderCal();renderDay(selDate);
+}
+
+// ═══ DETAIL ═══
+let detType=null,detId=null;
+function openDetail(type,id){
+  detType=type;detId=id;
+  const arr=type==='diary'?db.diaries:db.expenses;
+  const e=arr.find(x=>x.id===id);if(!e)return;
+  let html='';
+  if(type==='diary'){
+    html=`<div class="dh-wrap">
+      <div class="pill pill-purple" style="margin-bottom:10px">📔 日記</div>
+      <div style="font-size:15px;color:var(--ink3);margin-top:6px;font-weight:500">${esc(fmtDatetime(e.date,e.time))}</div>
+    </div>
+    <div style="padding:18px"><div class="card" style="padding:18px">
+      <p style="font-size:17px;line-height:1.85;white-space:pre-wrap;color:var(--ink)">${esc(e.content)}</p>
+    </div></div>`;
+  } else {
+    const cur=e.currency||'TWD';
+    const tot=lineTotal(e);
+    html=`<div class="dh-wrap">
+      <div class="pill pill-green" style="margin-bottom:10px">${CAT_EMOJI[e.category]||'📦'} ${esc(e.category)}</div>
+      ${e.title?`<div class="dh-title">${esc(e.title)}</div>`:''}
+      <div><span class="dh-cur">${curSym(cur)}</span><span class="dh-amount">${fmtAmt(tot,cur)}</span></div>
+    </div>
+    <div class="dmeta">
+      <div class="dmeta-row"><div class="dmeta-icon">📅</div>
+        <div><div class="dmeta-label">日期 &amp; 時間</div>
+        <div class="dmeta-val">${esc(fmtDatetime(e.date,e.time))}</div></div>
+      </div>
+      ${e.location?`<div class="dmeta-row"><div class="dmeta-icon">📍</div><div><div class="dmeta-label">地點</div><div class="dmeta-val">${esc(e.location)}</div></div></div>`:''}
+      <div class="dmeta-row"><div class="dmeta-icon">💳</div><div><div class="dmeta-label">付款方式</div><div class="dmeta-val">${esc(e.payment||'－')}</div></div></div>
+      <div class="dmeta-row"><div class="dmeta-icon">🌐</div><div><div class="dmeta-label">幣種</div><div class="dmeta-val">${esc(cur)}</div></div></div>
+      ${e.items&&e.items.length?`
+      <div class="dmeta-row"><div class="dmeta-icon">📋</div><div style="flex:1">
+        <div class="dmeta-label">逐筆明細</div>
+        ${e.items.map(it=>`<div class="dline-item"><span class="dline-name">${esc(it.name)}</span><span class="dline-amt">${curSym(cur)}${fmtAmt(it.amount,cur)}</span></div>`).join('')}
+        <div style="display:flex;justify-content:space-between;padding-top:8px;border-top:1.5px solid var(--border);margin-top:4px">
+          <span style="font-size:14px;font-weight:700;color:var(--ink3)">總計</span>
+          <span style="font-size:16px;font-weight:700;color:var(--green)">${curSym(cur)}${fmtAmt(tot,cur)}</span>
+        </div>
+      </div></div>`:''}
+    </div>`;
+  }
+  document.getElementById('detail-body').innerHTML=html;
+  showScr('detail');
+}
+
+// ═══ DELETE ═══
+function openDeleteSheet(){document.getElementById('del-overlay').classList.add('open');}
+function doDelete(){
+  if(detType==='diary')db.diaries=db.diaries.filter(x=>x.id!==detId);
+  else db.expenses=db.expenses.filter(x=>x.id!==detId);
+  persist();closeOverlay('del-overlay');goBack();
+  renderCal();renderDay(selDate);toast('已刪除');
+}
+
+// ═══ EDIT ═══
+function openEditSheet(){
+  const arr=detType==='diary'?db.diaries:db.expenses;
+  const e=arr.find(x=>x.id===detId);if(!e)return;
+  let html='';
+  if(detType==='diary'){
+    html=`<h3>修改日記</h3>
+    <div class="sheet-fields">
+      <div class="field"><label>日期</label><input type="date" id="ed-date" value="${esc(e.date)}"></div>
+      <div class="field"><label>時間</label><input type="time" id="ed-time" value="${esc(e.time||'')}"></div>
+      <div class="field"><label>內容</label><textarea id="ed-content" rows="6">${esc(e.content)}</textarea></div>
+    </div>
+    <div class="sheet-btns">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeOverlay('edit-overlay')">取消</button>
+      <button class="btn btn-purple" style="flex:1" onclick="saveEditDiary()">儲存</button>
+    </div>`;
+  } else {
+    const cur=e.currency||'TWD';
+    const cats=['餐飲','咖啡','交通','購物','娛樂','醫療','住宿','教育','其他'];
+    const curs=['TWD','USD','JPY','EUR','KRW','HKD','CNY','GBP','AUD','SGD','THB'];
+    const pays=['現金','信用卡','悠遊卡','行動支付','敬老卡扣點','敬老卡儲值金','會員卡儲值金','轉帳','其他'];
+    html=`<h3>修改記帳</h3>
+    <div class="sheet-fields">
+      <div class="field"><label>標題</label><input type="text" id="ed-title" value="${esc(e.title||'')}"></div>
+      <div class="field"><label>日期</label><input type="date" id="ed-date" value="${esc(e.date)}"></div>
+      <div class="field"><label>時間</label><input type="time" id="ed-time" value="${esc(e.time||'')}"></div>
+      <div class="field"><label>地點</label><input type="text" id="ed-loc" value="${esc(e.location||'')}"></div>
+      <div class="grid2">
+        <div class="field"><label>分類</label><select id="ed-cat">${cats.map(c=>`<option value="${c}"${e.category===c?' selected':''}>${CAT_EMOJI[c]} ${c}</option>`).join('')}</select></div>
+        <div class="field"><label>幣種</label><select id="ed-cur">${curs.map(c=>`<option value="${c}"${cur===c?' selected':''}>${c}</option>`).join('')}</select></div>
+      </div>
+      <div class="field"><label>付款方式</label><select id="ed-pay">${pays.map(p=>`<option value="${p}"${e.payment===p?' selected':''}>${p}</option>`).join('')}</select></div>
+    </div>
+    <div class="sheet-btns">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeOverlay('edit-overlay')">取消</button>
+      <button class="btn btn-green" style="flex:1" onclick="saveEditExpense()">儲存</button>
+    </div>`;
+  }
+  document.getElementById('edit-sheet-body').innerHTML=html;
+  document.getElementById('edit-overlay').classList.add('open');
+}
+function saveEditDiary(){
+  const e=db.diaries.find(x=>x.id===detId);if(!e)return;
+  e.date=document.getElementById('ed-date').value;
+  e.time=document.getElementById('ed-time').value;
+  e.content=document.getElementById('ed-content').value.trim();
+  if(!e.date||!e.content){toast('請填寫日期和內容');return;}
+  persist();closeOverlay('edit-overlay');
+  openDetail('diary',detId);renderCal();renderDay(selDate);toast('日記已更新 ✓');
+}
+function saveEditExpense(){
+  const e=db.expenses.find(x=>x.id===detId);if(!e)return;
+  e.title=document.getElementById('ed-title').value.trim();
+  e.date=document.getElementById('ed-date').value;
+  e.time=document.getElementById('ed-time').value;
+  e.location=document.getElementById('ed-loc').value.trim();
+  e.category=document.getElementById('ed-cat').value;
+  e.currency=document.getElementById('ed-cur').value;
+  e.payment=document.getElementById('ed-pay').value;
+  persist();closeOverlay('edit-overlay');
+  openDetail('expense',detId);renderCal();renderDay(selDate);toast('記帳已更新 ✓');
+}
+
+// ═══ STATS ═══
+let stY,stM;
+function statsInit(){const n=new Date();stY=n.getFullYear();stM=n.getMonth();}
+function statsShift(d){stM+=d;if(stM>11){stM=0;stY++;}if(stM<0){stM=11;stY--;}renderStats();}
+
+function drawPie(cats, total){
+  if(!cats.length||total===0)return'';
+  const R=52,cx=60,cy=60,size=120;
+  let angle=-Math.PI/2;
+  let slices='';
+  cats.forEach(([cat,amt])=>{
+    const ratio=amt/total;
+    const sweep=ratio*2*Math.PI;
+    const x1=cx+R*Math.cos(angle),y1=cy+R*Math.sin(angle);
+    const x2=cx+R*Math.cos(angle+sweep),y2=cy+R*Math.sin(angle+sweep);
+    const large=sweep>Math.PI?1:0;
+    const col=CAT_COLOR[cat]||'#7A6A55';
+    slices+=`<path d="M${cx},${cy} L${x1},${y1} A${R},${R} 0 ${large},1 ${x2},${y2} Z" fill="${col}" opacity="0.88"/>`;
+    angle+=sweep;
+  });
+  const svg=`<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" class="pie-svg">
+    <circle cx="${cx}" cy="${cy}" r="${R}" fill="var(--paper3)"/>
+    ${slices}
+    <circle cx="${cx}" cy="${cy}" r="${R*0.44}" fill="var(--paper)"/>
+  </svg>`;
+  const legendItems=cats.map(([cat,amt])=>{
+    const pct=Math.round(amt/total*100);
+    const col=CAT_COLOR[cat]||'#7A6A55';
+    return`<div class="pie-leg-item">
+      <div class="pie-leg-dot" style="background:${col}"></div>
+      <span class="pie-leg-label">${CAT_EMOJI[cat]||'📦'} ${esc(cat)}</span>
+      <span class="pie-leg-pct">${pct}%</span>
+    </div>`;
+  }).join('');
+  return`<div class="pie-card">${svg}<div class="pie-legend">${legendItems}</div></div>`;
+}
+
+function renderStats(){
+  document.getElementById('stats-label').textContent=`${stY} 年 ${MONTHS[stM]}`;
+  const pfx=`${stY}-${p2(stM+1)}`;
+  const exps=db.expenses.filter(x=>x.date.startsWith(pfx));
+  const dias=db.diaries.filter(x=>x.date.startsWith(pfx));
+
+  // totals by currency
+  const byCur={};
+  exps.forEach(x=>{
+    const cur=x.currency||'TWD';
+    byCur[cur]=(byCur[cur]||0)+lineTotal(x);
+  });
+
+  // category totals (all currencies combined by native amount)
+  const byCat={};
+  exps.forEach(x=>{byCat[x.category]=(byCat[x.category]||0)+lineTotal(x);});
+  const sortedCats=Object.entries(byCat).sort((a,b)=>b[1]-a[1]);
+  const catTotal=sortedCats.reduce((s,c)=>s+c[1],0);
+
+  // payment by currency — nested: { TWD: { 現金: 200, 信用卡: 400 }, JPY: { 現金: 3000 } }
+  const payByCur={};
+  exps.forEach(x=>{
+    const cur=x.currency||'TWD';
+    const pay=x.payment||'其他';
+    if(!payByCur[cur])payByCur[cur]={};
+    payByCur[cur][pay]=(payByCur[cur][pay]||0)+lineTotal(x);
+  });
+
+  // ── HERO: all currencies ──
+  let heroRows='';
+  Object.entries(byCur).sort((a,b)=>b[1]-a[1]).forEach(([cur,amt])=>{
+    heroRows+=`<div class="cur-hero-row">
+      <span class="cur-hero-name">${esc(cur)}</span>
+      <span class="cur-hero-amt">${curSym(cur)}${fmtAmt(amt,cur)}</span>
+    </div>`;
+  });
+
+  let html=`<div class="stat-hero">
+    <div class="stat-hero-label">本月各幣種支出</div>
+    ${heroRows||'<div style="color:var(--ink3);font-size:15px;padding:8px 0">尚無支出記錄</div>'}
+    <div class="stat-hero-pills" style="margin-top:12px">
+      <span class="pill pill-green">💸 ${exps.length} 筆消費</span>
+      <span class="pill pill-purple">📔 ${dias.length} 篇日記</span>
+    </div>
+  </div>`;
+
+  // ── PIE: category breakdown ──
+  if(sortedCats.length){
+    html+=`<div class="sec-hd">分類比例</div>
+    ${drawPie(sortedCats,catTotal)}`;
+  }
+
+  // ── PAYMENT by currency — 2-col chip cards per currency ──
+  if(Object.keys(payByCur).length){
+    html+=`<div class="sec-hd">付款方式（依幣種）</div>`;
+    Object.entries(payByCur).forEach(([cur,pays])=>{
+      const curTotal=Object.values(pays).reduce((s,v)=>s+v,0);
+      const chips=Object.entries(pays).sort((a,b)=>b[1]-a[1])
+        .map(([pay,amt])=>`<div class="pay-chip">
+          <div class="pay-chip-name">${esc(pay)}</div>
+          <div class="pay-chip-amt">${curSym(cur)}${fmtAmt(amt,cur)}</div>
+        </div>`).join('');
+      html+=`<div class="pay-cur-section">
+        <div class="pay-cur-label">
+          <span>${esc(cur)}</span>
+          <span class="pay-cur-label-total">${curSym(cur)}${fmtAmt(curTotal,cur)}</span>
+        </div>
+        <div class="pay-chip-grid">${chips}</div>
+      </div>`;
+    });
+  }
+
+  if(!exps.length&&!dias.length){
+    html+=`<div style="text-align:center;padding:50px 20px;color:var(--ink3)"><div style="font-size:42px;margin-bottom:14px">📭</div><p style="font-size:17px">這個月還沒有記錄</p></div>`;
+  }
+
+  html+=`<div style="padding:20px 16px 36px">
+    <div class="sec-hd" style="margin:0 0 10px;padding:0">資料備份</div>
+    <button class="btn btn-ghost btn-w" onclick="exportData()">📤 匯出 JSON 備份</button>
+  </div>`;
+
+  document.getElementById('stats-body').innerHTML=html;
+}
+
+function exportData(){
+  const blob=new Blob([JSON.stringify(db,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`diary-backup-${toDS(new Date())}.json`;
+  a.click();
+}
+
+// ═══ BOOT ═══
+calInit();statsInit();initDefaults();
+document.getElementById('e-currency').addEventListener('change',renderLineItems);
+if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js');
+</script>
+</body>
+</html>
